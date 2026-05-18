@@ -1,0 +1,2 @@
+ALTER TABLE shifts
+    ADD COLUMN is_overtime TINYINT(1) NOT NULL DEFAULT 0 AFTER status;

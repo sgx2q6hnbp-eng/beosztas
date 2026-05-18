@@ -1,0 +1,6 @@
+# Feltöltött fájlok közvetlen böngészős elérésének tiltása
+Options -Indexes
+<FilesMatch ".*">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
