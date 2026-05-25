@@ -284,9 +284,13 @@ class AdminController
         }
 
         $check = $this->db->prepare(
-            'SELECT lr.id, lr.user_id, lr.start_date, lr.end_date, lr.leave_type, u.email AS employee_email, u.name AS employee_name, u.id AS uid
-             FROM leave_requests lr JOIN users u ON u.id = lr.user_id WHERE lr.id = :id AND lr.status = :st'
+            'SELECT lr.id, lr.user_id, lr.start_date, lr.end_date, lr.leave_type,
+                    u.email AS employee_email, u.name AS employee_name, u.id AS uid
+             FROM leave_requests lr
+             JOIN users u ON u.id = lr.user_id
+             WHERE lr.id = :id AND lr.status = :st'
         );
+        $check->execute([':id' => $id, ':st' => 'pending']);
         $leave = $check->fetch();
 
         if (!$leave) {
@@ -319,7 +323,6 @@ class AdminController
                 ':end'   => $leave['end_date'],
             ]);
         }
-
 
         // E-mail értesítés a dolgozónak
         MailService::notifyEmployeeLeaveReviewed(
@@ -391,6 +394,7 @@ class AdminController
                AND start_date <= :end
                AND end_date   >= :start"
         );
+        $overlap->execute([':uid' => $userId, ':start' => $startDate, ':end' => $endDate]);
         if ((int)$overlap->fetchColumn() > 0) {
             $_SESSION['error'] = 'Erre az időszakra már van rögzített kérelem a dolgozónál.';
             header('Location: /admin/leaves'); exit;
