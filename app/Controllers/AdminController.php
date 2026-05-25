@@ -144,7 +144,6 @@ class AdminController
             header('Location: /admin/employees'); exit;
         }
 
-        // Egyediseg ellenorzese (sajat magat kiveve)
         $checkNum = $this->db->prepare("SELECT id FROM users WHERE employee_number = :en AND id != :id LIMIT 1");
         $checkNum->execute([':en' => $employeeNumber, ':id' => $id]);
         if ($checkNum->fetch()) {
@@ -165,7 +164,6 @@ class AdminController
             }
         }
 
-        // Alap mezok frissitese
         $stmt = $this->db->prepare(
             "UPDATE users SET name = :name, employee_number = :en, email = :email,
              role = :role, fleet_id = :fleet, phone = :phone, is_active = :active
@@ -182,7 +180,6 @@ class AdminController
             ':id'     => $id,
         ]);
 
-        // Jelszo frissitese csak ha meg lett adva
         if (strlen($password) >= 4) {
             $this->db->prepare("UPDATE users SET password = :pw WHERE id = :id")
                 ->execute([':pw' => password_hash($password, PASSWORD_BCRYPT), ':id' => $id]);
@@ -210,13 +207,11 @@ class AdminController
             header('Location: /admin/employees'); exit;
         }
 
-        // Saját magát nem törölheti
         if ($id === $adminId) {
             $_SESSION['error'] = 'Sajat magadat nem torölheted.';
             header('Location: /admin/employees'); exit;
         }
 
-        // Soft delete: is_active = 0
         $stmt = $this->db->prepare("UPDATE users SET is_active = 0 WHERE id = :id");
         $stmt->execute([':id' => $id]);
 
@@ -254,7 +249,6 @@ class AdminController
         }
         $leaves = $stmt->fetchAll();
 
-        // Dolgozók listája az admin rögzítő formhoz
         $employees = $this->db->query(
             "SELECT id, name FROM users WHERE role = 'employee' AND is_active = 1 ORDER BY name ASC"
         )->fetchAll();
@@ -324,7 +318,6 @@ class AdminController
             ]);
         }
 
-        // E-mail értesítés a dolgozónak
         MailService::notifyEmployeeLeaveReviewed(
             ['id' => $leave['uid'], 'email' => $leave['employee_email'], 'name' => $leave['employee_name']],
             $leave,
@@ -332,6 +325,68 @@ class AdminController
             $note
         );
         $filter = $_POST['filter'] ?? 'pending';
+        header('Location: /admin/leaves?status=' . $filter); exit;
+    }
+
+    public function deleteLeave(): void
+    {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            header('Location: /admin/leaves'); exit;
+        }
+
+        if (!User::verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+            $_SESSION['error'] = 'Érvénytelen kérés.';
+            header('Location: /admin/leaves'); exit;
+        }
+
+        $id     = (int)($_POST['leave_id'] ?? 0);
+        $filter = $_POST['filter'] ?? 'approved';
+
+        if (!$id) {
+            $_SESSION['error'] = 'Érvénytelen azonosító.';
+            header('Location: /admin/leaves?status=' . $filter); exit;
+        }
+
+        // Csak elbírált (approved/rejected) kérelem törölhető
+        $check = $this->db->prepare(
+            'SELECT id, user_id, leave_type, start_date, end_date, status
+             FROM leave_requests
+             WHERE id = :id AND status IN ("approved", "rejected")'
+        );
+        $check->execute([':id' => $id]);
+        $leave = $check->fetch();
+
+        if (!$leave) {
+            $_SESSION['error'] = 'A kérelem nem található, vagy függő kérelem nem törölhető így.';
+            header('Location: /admin/leaves?status=' . $filter); exit;
+        }
+
+        $this->db->beginTransaction();
+        try {
+            // Ha jóváhagyott volt, a műszakok státusza visszaáll aktívra
+            if ($leave['status'] === 'approved') {
+                $this->db->prepare(
+                    'UPDATE shifts SET status = \'active\'
+                     WHERE user_id = :uid
+                       AND shift_date BETWEEN :start AND :end
+                       AND status IN (\'vacation\', \'sick\')'
+                )->execute([
+                    ':uid'   => $leave['user_id'],
+                    ':start' => $leave['start_date'],
+                    ':end'   => $leave['end_date'],
+                ]);
+            }
+
+            $this->db->prepare('DELETE FROM leave_requests WHERE id = :id')
+                ->execute([':id' => $id]);
+
+            $this->db->commit();
+            $_SESSION['success'] = 'A szabadságkérelem sikeresen törölve.';
+        } catch (\Throwable $e) {
+            $this->db->rollBack();
+            $_SESSION['error'] = 'Hiba történt: ' . $e->getMessage();
+        }
+
         header('Location: /admin/leaves?status=' . $filter); exit;
     }
 
@@ -386,7 +441,6 @@ class AdminController
             header('Location: /admin/leaves'); exit;
         }
 
-        // Átfedés ellenőrzés
         $overlap = $this->db->prepare(
             "SELECT COUNT(*) FROM leave_requests
              WHERE user_id = :uid
@@ -402,7 +456,6 @@ class AdminController
 
         $this->db->beginTransaction();
         try {
-            // Kérelem rögzítése, azonnal jóváhagyva
             $stmt = $this->db->prepare(
                 "INSERT INTO leave_requests
                     (user_id, leave_type, start_date, end_date, reason, status, reviewed_by, reviewed_at)
@@ -418,7 +471,6 @@ class AdminController
                 ':adm'    => $adminId,
             ]);
 
-            // Érintett műszakok státuszának frissítése
             $shiftStatus = $leaveType === 'sick' ? 'sick' : 'vacation';
             $this->db->prepare(
                 "UPDATE shifts SET status = :st

@@ -107,7 +107,18 @@ $csrf    = User::generateCsrfToken();
                                     ❌
                                 </button>
                             <?php else: ?>
-                                <span class="text-muted small">–</span>
+                                <!-- Törlés elbírált kérelemnél -->
+                                <button type="button" class="btn btn-outline-danger btn-sm"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#deleteLeaveModal"
+                                        data-id="<?= $l['id'] ?>"
+                                        data-name="<?= htmlspecialchars($l['employee_name']) ?>"
+                                        data-start="<?= htmlspecialchars($l['start_date']) ?>"
+                                        data-end="<?= htmlspecialchars($l['end_date']) ?>"
+                                        data-status="<?= htmlspecialchars($statusLabels[$l['status']] ?? $l['status']) ?>"
+                                        title="Kérelem törlése">
+                                    🗑
+                                </button>
                             <?php endif; ?>
                         </td>
                     </tr>
@@ -209,14 +220,53 @@ $csrf    = User::generateCsrfToken();
     </div>
 </div>
 
+<!-- Törlés megerősítő modal -->
+<div class="modal fade" id="deleteLeaveModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <form method="POST" action="/admin/leaves/delete">
+                <input type="hidden" name="csrf_token" value="<?= $csrf ?>">
+                <input type="hidden" name="leave_id" id="deleteLeaveId" value="">
+                <input type="hidden" name="filter"   value="<?= $currentFilter ?>">
+                <div class="modal-header border-0" style="background:#dc2626;color:#fff;">
+                    <h5 class="modal-title fw-bold">🗑 Kérelem törlése</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" style="filter:invert(1)"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2">Biztosan törlöd az alábbi kérelmet?</p>
+                    <div class="bg-light rounded p-3 small">
+                        <div><strong>Dolgozó:</strong> <span id="deleteEmployeeName"></span></div>
+                        <div><strong>Időszak:</strong> <span id="deleteLeaveRange"></span></div>
+                        <div><strong>Státusz:</strong> <span id="deleteLeaveStatus"></span></div>
+                    </div>
+                    <div class="alert alert-warning py-2 small mt-3 mb-0">
+                        ⚠️ Ha a kérelem <strong>jóváhagyott</strong> volt, az érintett műszakok státusza <strong>visszaáll aktívra</strong>.
+                    </div>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Mégse</button>
+                    <button type="submit" class="btn btn-danger btn-sm fw-semibold">Igen, törlöm</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-// Modal adatok feltöltése
 document.getElementById('rejectModal').addEventListener('show.bs.modal', function(e) {
     const btn = e.relatedTarget;
-    document.getElementById('rejectLeaveId').value      = btn.dataset.id;
+    document.getElementById('rejectLeaveId').value = btn.dataset.id;
     document.getElementById('rejectEmployeeName').textContent = btn.dataset.name;
     document.getElementById('adminNote').value = '';
+});
+
+document.getElementById('deleteLeaveModal').addEventListener('show.bs.modal', function(e) {
+    const btn = e.relatedTarget;
+    document.getElementById('deleteLeaveId').value = btn.dataset.id;
+    document.getElementById('deleteEmployeeName').textContent = btn.dataset.name;
+    document.getElementById('deleteLeaveRange').textContent = btn.dataset.start + ' – ' + btn.dataset.end;
+    document.getElementById('deleteLeaveStatus').textContent = btn.dataset.status;
 });
 </script>
 </body>
