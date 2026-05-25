@@ -9,6 +9,8 @@ $today = date('Y-m-d');
 $hunDays = ['1'=>'Hétfő','2'=>'Kedd','3'=>'Szerda','4'=>'Csütörtök','5'=>'Péntek','6'=>'Szombat','7'=>'Vasárnap'];
 $statusLabels = ['active'=>'','sick'=>'🤒 Táppénz','vacation'=>'🌴 Szabadság','swap_pending'=>'🔄 Csere folyamatban','absence'=>'❌ Hiányzás'];
 $isAdmin = (($_SESSION['user']['role'] ?? '') === 'admin');
+$currentUserName = $_SESSION['user']['name'] ?? '';
+$currentUserId   = (int)($_SESSION['user']['id'] ?? 0);
 ?>
 <!DOCTYPE html>
 <html lang="hu">
@@ -37,10 +39,13 @@ $isAdmin = (($_SESSION['user']['role'] ?? '') === 'admin');
         .cal-shift-time { display:block; color:#64748b; font-size:.68rem; }
         .cal-more { font-size:.68rem; color:#3B82F6; font-weight:600; margin-top:2px; }
         .cal-add-hint { font-size:.65rem; color:#94a3b8; margin-top:4px; text-align:center; }
+        .cal-my-shift { background:#dbeafe !important; border-left-color:#3B82F6 !important; }
+        .cal-cell--dimmed { opacity:.35; }
         .modal-shift-row { border-left:4px solid #64748b; background:#f8fafc; border-radius:0 8px 8px 0; padding:.6rem 1rem; margin-bottom:.5rem; }
         .modal-shift-row .emp-name { font-weight:700; color:#1e293b; }
         .modal-shift-row .emp-detail { font-size:.8rem; color:#64748b; }
         .fleet-pill { display:inline-block; padding:.15em .55em; border-radius:4px; font-size:.7rem; font-weight:700; color:#fff; margin-right:.3rem; }
+        #myShiftToggle.active { background:#0C4E54; color:#fff; border-color:#0C4E54; }
         @media(max-width:576px){ .cal-cell{min-height:55px;padding:3px;} .cal-shift-name{display:none;} }
     </style>
 </head>
@@ -49,7 +54,12 @@ $isAdmin = (($_SESSION['user']['role'] ?? '') === 'admin');
 <div class="container py-4">
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
         <h1 class="h4 fw-bold mb-0">📅 Beosztás</h1>
-        <div class="d-flex align-items-center gap-2">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <?php if (!$isAdmin): ?>
+            <button id="myShiftToggle" class="btn btn-outline-secondary btn-sm" onclick="toggleMyShifts()">
+                👤 Csak az enyém
+            </button>
+            <?php endif; ?>
             <a href="/schedule?year=<?= $prevYear ?>&month=<?= $prevMonth ?>" class="btn btn-outline-secondary btn-sm">← Előző</a>
             <span class="fw-bold px-1"><?= $monthNames[$month] ?> <?= $year ?></span>
             <a href="/schedule?year=<?= $nextYear ?>&month=<?= $nextMonth ?>" class="btn btn-outline-secondary btn-sm">Következő →</a>
@@ -59,7 +69,7 @@ $isAdmin = (($_SESSION['user']['role'] ?? '') === 'admin');
         <div class="calendar-grid mb-1">
             <?php foreach ($dayNames as $d): ?><div class="cal-dayname"><?= $d ?></div><?php endforeach; ?>
         </div>
-        <div class="calendar-grid">
+        <div class="calendar-grid" id="calendarGrid">
             <?php for ($i=1; $i<$firstDayOfWeek; $i++): ?>
                 <div class="cal-cell cal-cell--empty"></div>
             <?php endfor; ?>
@@ -72,19 +82,25 @@ $isAdmin = (($_SESSION['user']['role'] ?? '') === 'admin');
                 $showShifts = array_slice($dayShifts, 0, $maxShow);
                 $moreCount  = count($dayShifts) - $maxShow;
                 $dowNum     = date('N', strtotime($dateStr));
-                // Admin üres napra is kattinthat
+                $hasMyShift = false;
+                foreach ($dayShifts as $s) {
+                    if ((int)$s['user_id'] === $currentUserId) { $hasMyShift = true; break; }
+                }
                 $clickable = $hasShifts || $isAdmin;
                 $extraClass = '';
                 if (!$hasShifts && $isAdmin) $extraClass = 'cal-cell--admin-empty';
                 if (!$hasShifts && !$isAdmin) $extraClass = 'cal-cell--no-shift';
             ?>
                 <div class="cal-cell <?= $isToday ? 'cal-cell--today' : '' ?> <?= $extraClass ?>"
+                     data-date="<?= $dateStr ?>"
+                     data-has-my-shift="<?= $hasMyShift ? '1' : '0' ?>"
                      <?php if ($clickable): ?>
                          onclick="openDayModal('<?= $dateStr ?>', '<?= $hunDays[$dowNum] ?>', <?= $day ?>)"
                      <?php endif; ?>>
                     <span class="cal-day-num"><?= $day ?></span>
                     <?php foreach ($showShifts as $s): ?>
-                        <div class="cal-shift" style="border-left:3px solid <?= htmlspecialchars($s['color'] ?? '#64748b') ?>">
+                        <div class="cal-shift <?= ((int)$s['user_id'] === $currentUserId) ? 'cal-my-shift' : '' ?>"
+                             style="border-left:3px solid <?= htmlspecialchars($s['color'] ?? '#64748b') ?>">
                             <span class="cal-shift-name"><?= htmlspecialchars($s['employee_name']) ?></span>
                             <?php if (!empty($s['license_plate'])): ?>
                             <span class="cal-shift-time"><?= htmlspecialchars($s['license_plate']) ?></span>
@@ -178,37 +194,65 @@ $isAdmin = (($_SESSION['user']['role'] ?? '') === 'admin');
 
 <!-- Shift adatok JS-nek -->
 <script>
-const shiftsByDate = <?php
+const shiftsByDate   = <?php
     $jsData = [];
     foreach ($shiftsByDate as $date => $dayShifts) {
         foreach ($dayShifts as $s) {
             $jsData[$date][] = [
-                'name'    => $s['employee_name'],
-                'fleet'   => $s['fleet_name'] ?? '',
-                'color'   => $s['color'] ?? '#64748b',
-                'start'   => substr($s['start_time'], 0, 5),
-                'end'     => substr($s['end_time'], 0, 5),
-                'plate'   => $s['license_plate'] ?? '',
-                'location'=> $s['location'] ?? '',
-                'status'  => $s['status'] ?? 'active',
+                'name'     => $s['employee_name'],
+                'fleet'    => $s['fleet_name'] ?? '',
+                'color'    => $s['color'] ?? '#64748b',
+                'start'    => substr($s['start_time'], 0, 5),
+                'end'      => substr($s['end_time'], 0, 5),
+                'plate'    => $s['license_plate'] ?? '',
+                'location' => $s['location'] ?? '',
+                'status'   => $s['status'] ?? 'active',
                 'id'       => (int)$s['id'],
                 'overtime' => (bool)($s['is_overtime'] ?? false),
+                'user_id'  => (int)$s['user_id'],
             ];
         }
     }
     echo json_encode($jsData, JSON_UNESCAPED_UNICODE);
 ?>;
 
-const statusLabels = <?= json_encode($statusLabels, JSON_UNESCAPED_UNICODE) ?>;
-const monthNames   = <?= json_encode($monthNames, JSON_UNESCAPED_UNICODE) ?>;
-const isAdmin      = <?= json_encode($isAdmin) ?>;
+const statusLabels   = <?= json_encode($statusLabels, JSON_UNESCAPED_UNICODE) ?>;
+const monthNames     = <?= json_encode($monthNames, JSON_UNESCAPED_UNICODE) ?>;
+const isAdmin        = <?= json_encode($isAdmin) ?>;
+const currentUserId  = <?= json_encode($currentUserId) ?>;
+const currentUserName = <?= json_encode($currentUserName, JSON_UNESCAPED_UNICODE) ?>;
 
+// --- Saját beosztás szűrő ---
+let myShiftOnly = false;
+
+function toggleMyShifts() {
+    myShiftOnly = !myShiftOnly;
+    const btn = document.getElementById('myShiftToggle');
+    btn.classList.toggle('active', myShiftOnly);
+    btn.textContent = myShiftOnly ? '👥 Mindenki' : '👤 Csak az enyém';
+
+    document.querySelectorAll('#calendarGrid .cal-cell[data-date]').forEach(cell => {
+        const hasMyShift = cell.dataset.hasMyShift === '1';
+        if (myShiftOnly) {
+            cell.classList.toggle('cal-cell--dimmed', !hasMyShift);
+        } else {
+            cell.classList.remove('cal-cell--dimmed');
+        }
+    });
+}
+
+// --- Nap modal ---
 function openDayModal(dateStr, dayName, dayNum) {
     currentModalDate = dateStr;
-    const shifts = shiftsByDate[dateStr] || [];
-    const parts  = dateStr.split('-');
-    const title  = dayName + ', ' + parts[0] + '. ' + monthNames[parseInt(parts[1])] + ' ' + dayNum + '.';
+    let shifts = shiftsByDate[dateStr] || [];
 
+    // Ha szűrő aktív, csak a saját beosztásokat mutatja a modalban is
+    if (myShiftOnly) {
+        shifts = shifts.filter(s => s.user_id === currentUserId);
+    }
+
+    const parts = dateStr.split('-');
+    const title = dayName + ', ' + parts[0] + '. ' + monthNames[parseInt(parts[1])] + ' ' + dayNum + '.';
     document.getElementById('dayModalTitle').textContent = title;
 
     let html = '';
@@ -238,11 +282,13 @@ function openDayModal(dateStr, dayName, dayNum) {
                       style="font-size:.62rem;padding:1px 7px;border-radius:4px;"
                       onclick="deleteShift(${s.id}, this)">🗑 Törlés</button>`
                 : '';
+            const isMine = s.user_id === currentUserId;
             html += `
-            <div class="modal-shift-row" style="border-left-color:${s.color}" data-shift-id="${s.id}">
+            <div class="modal-shift-row" style="border-left-color:${s.color}${isMine ? ';background:#eff6ff' : ''}" data-shift-id="${s.id}">
                 <div class="emp-name" style="${s.overtime ? 'color:#dc2626;font-weight:700;' : ''}">
                     <span class="fleet-pill" style="background:${s.color}">${s.fleet}</span>
-                    ${s.name} ${statusBadge} ${overtimeBtn} ${deleteBtn}
+                    ${s.name}${isMine ? ' <span class="badge bg-primary ms-1" style="font-size:.6rem">Én</span>' : ''}
+                    ${statusBadge} ${overtimeBtn} ${deleteBtn}
                 </div>
                 <div class="emp-detail mt-1">
                     ${plate}${location}
@@ -260,7 +306,6 @@ let currentModalDate = null;
 function openAddShiftForm() {
     const date = currentModalDate;
     document.getElementById('addShiftDate').value = date;
-    // Olvasható dátum megjelenítése
     const parts = date.split('-');
     document.getElementById('addShiftDateDisplay').value =
         parts[0] + '. ' + monthNames[parseInt(parts[1])] + ' ' + parseInt(parts[2]) + '.';
@@ -312,6 +357,7 @@ function submitAddShift() {
                 status: s.status || 'active',
                 id: s.id,
                 overtime: false,
+                user_id: s.user_id,
             });
             bootstrap.Modal.getInstance(document.getElementById('addShiftModal'))?.hide();
             setTimeout(() => location.reload(), 300);
