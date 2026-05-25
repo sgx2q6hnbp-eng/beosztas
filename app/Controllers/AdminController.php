@@ -53,9 +53,6 @@ class AdminController
         if (empty($employeeNumber)) {
             $errors[] = 'A torzsszam megadasa kotelezo.';
         }
-        if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $errors[] = 'Ervenytelen e-mail cim formatum.';
-        }
         if (!in_array($role, ['admin', 'employee'], true)) {
             $errors[] = 'Ervenytelen szerepkor.';
         }
@@ -69,10 +66,17 @@ class AdminController
             $errors[] = 'Ez a torzsszam mar foglalt.';
         }
 
-        $checkEmail = $this->db->prepare("SELECT id FROM users WHERE email = :email LIMIT 1");
-        $checkEmail->execute([':email' => $email]);
-        if ($checkEmail->fetch()) {
-            $errors[] = 'Ez az e-mail cim mar foglalt.';
+        // E-mail ellenorzese csak ha meg van adva
+        if (!empty($email)) {
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $errors[] = 'Ervenytelen e-mail cim formatum.';
+            } else {
+                $checkEmail = $this->db->prepare("SELECT id FROM users WHERE email = :email LIMIT 1");
+                $checkEmail->execute([':email' => $email]);
+                if ($checkEmail->fetch()) {
+                    $errors[] = 'Ez az e-mail cim mar foglalt.';
+                }
+            }
         }
 
         if (!empty($errors)) {
@@ -87,7 +91,7 @@ class AdminController
         $stmt->execute([
             ':name'            => $name,
             ':employee_number' => $employeeNumber,
-            ':email'           => $email,
+            ':email'           => $email ?: null,
             ':password'        => password_hash($password, PASSWORD_BCRYPT),
             ':role'            => $role,
             ':fleet_id'        => $fleetId ?: null,
