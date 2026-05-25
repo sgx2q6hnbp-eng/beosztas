@@ -27,17 +27,23 @@ class ScheduleController
         $firstDay = sprintf('%04d-%02d-01', $year, $month);
         $lastDay  = date('Y-m-t', strtotime($firstDay));
 
-        if ($isAdmin) {
+        $fleetId = !empty($user['fleet_id']) ? (int)$user['fleet_id'] : null;
+
+        if ($isAdmin || $fleetId === null) {
+            // Admin vagy flotta nélküli dolgozó: teljes beosztás
             $stmt = $this->db->prepare(
                 "SELECT s.*, u.name AS employee_name, f.name AS fleet_name, f.color
                  FROM shifts s
                  JOIN users u ON u.id = s.user_id
                  JOIN fleets f ON f.id = s.fleet_id
                  WHERE s.shift_date BETWEEN :first AND :last
-                 ORDER BY s.shift_date ASC, f.name ASC, CASE WHEN s.status = 'active' THEN 0 ELSE 1 END ASC, u.name ASC"
+                 ORDER BY s.shift_date ASC, f.name ASC,
+                          CASE WHEN s.status = 'active' THEN 0 ELSE 1 END ASC,
+                          u.name ASC"
             );
             $stmt->execute([':first' => $firstDay, ':last' => $lastDay]);
         } else {
+            // Dolgozó: csak a saját flottája
             $stmt = $this->db->prepare(
                 "SELECT s.*, u.name AS employee_name, f.name AS fleet_name, f.color
                  FROM shifts s
@@ -45,10 +51,13 @@ class ScheduleController
                  JOIN fleets f ON f.id = s.fleet_id
                  WHERE s.shift_date BETWEEN :first AND :last
                    AND s.fleet_id = :fleet_id
-                 ORDER BY s.shift_date ASC, f.name ASC, CASE WHEN s.status = 'active' THEN 0 ELSE 1 END ASC, u.name ASC"
+                 ORDER BY s.shift_date ASC, f.name ASC,
+                          CASE WHEN s.status = 'active' THEN 0 ELSE 1 END ASC,
+                          u.name ASC"
             );
-            $stmt->execute([':first' => $firstDay, ':last' => $lastDay, ':fleet_id' => $user['fleet_id']]);
+            $stmt->execute([':first' => $firstDay, ':last' => $lastDay, ':fleet_id' => $fleetId]);
         }
+
         $shifts = $stmt->fetchAll();
 
         $shiftsByDate = [];
@@ -71,7 +80,6 @@ class ScheduleController
             return;
         }
 
-        // Csak admin vagy saját műszak
         $user    = $_SESSION['user'];
         $isAdmin = ($user['role'] === 'admin');
 
@@ -92,24 +100,22 @@ class ScheduleController
         }
 
         $newValue = $shift['is_overtime'] ? 0 : 1;
-
-        $update = $this->db->prepare("UPDATE shifts SET is_overtime = :val WHERE id = :id");
-        $update->execute([':val' => $newValue, ':id' => $shiftId]);
+        $this->db->prepare("UPDATE shifts SET is_overtime = :val WHERE id = :id")
+                 ->execute([':val' => $newValue, ':id' => $shiftId]);
 
         header('Content-Type: application/json');
         echo json_encode(['success' => true, 'is_overtime' => (bool)$newValue]);
     }
 
-
     public function addShift(): void
     {
         AuthService::requireAdmin();
 
-        $userId    = (int)($_POST['user_id']    ?? 0);
-        $shiftDate = trim($_POST['shift_date']  ?? '');
-        $startTime = trim($_POST['start_time']  ?? '06:00');
-        $endTime   = trim($_POST['end_time']    ?? '18:00');
-        $location  = trim($_POST['location']    ?? '');
+        $userId    = (int)($_POST['user_id']      ?? 0);
+        $shiftDate = trim($_POST['shift_date']    ?? '');
+        $startTime = trim($_POST['start_time']    ?? '06:00');
+        $endTime   = trim($_POST['end_time']      ?? '18:00');
+        $location  = trim($_POST['location']      ?? '');
         $plate     = trim($_POST['license_plate'] ?? '');
 
         header('Content-Type: application/json');
@@ -120,7 +126,6 @@ class ScheduleController
             return;
         }
 
-        // Felhasználó fleet_id lekérése
         $uStmt = $this->db->prepare("SELECT id, name, fleet_id FROM users WHERE id = :id AND is_active = 1");
         $uStmt->execute([':id' => $userId]);
         $user = $uStmt->fetch();
@@ -130,7 +135,6 @@ class ScheduleController
             return;
         }
 
-        // Duplikáció ellenőrzés
         $chk = $this->db->prepare("SELECT id FROM shifts WHERE user_id = :uid AND shift_date = :date");
         $chk->execute([':uid' => $userId, ':date' => $shiftDate]);
         if ($chk->fetch()) {
@@ -155,7 +159,6 @@ class ScheduleController
 
         $newId = (int)$this->db->lastInsertId();
 
-        // Fleet szín lekérése
         $fStmt = $this->db->prepare("SELECT name, color FROM fleets WHERE id = :id");
         $fStmt->execute([':id' => $user['fleet_id']]);
         $fleet = $fStmt->fetch();
@@ -201,10 +204,8 @@ class ScheduleController
             return;
         }
 
-        $del = $this->db->prepare("DELETE FROM shifts WHERE id = :id");
-        $del->execute([':id' => $shiftId]);
+        $this->db->prepare("DELETE FROM shifts WHERE id = :id")->execute([':id' => $shiftId]);
 
         echo json_encode(['success' => true]);
     }
-
 }
