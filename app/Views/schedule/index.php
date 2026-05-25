@@ -8,6 +8,7 @@ $nextMonth = $month===12 ? 1 : $month+1; $nextYear = $month===12 ? $year+1 : $ye
 $today = date('Y-m-d');
 $hunDays = ['1'=>'Hétfő','2'=>'Kedd','3'=>'Szerda','4'=>'Csütörtök','5'=>'Péntek','6'=>'Szombat','7'=>'Vasárnap'];
 $statusLabels = ['active'=>'','sick'=>'🤒 Táppénz','vacation'=>'🌴 Szabadság','swap_pending'=>'🔄 Csere folyamatban','absence'=>'❌ Hiányzás'];
+$isAdmin = (($_SESSION['user']['role'] ?? '') === 'admin');
 ?>
 <!DOCTYPE html>
 <html lang="hu">
@@ -24,6 +25,10 @@ $statusLabels = ['active'=>'','sick'=>'🤒 Táppénz','vacation'=>'🌴 Szabads
         .cal-cell:hover { box-shadow:0 4px 12px rgba(0,0,0,.1); transform:translateY(-1px); }
         .cal-cell--empty { background:transparent; box-shadow:none; cursor:default; pointer-events:none; }
         .cal-cell--empty:hover { transform:none; box-shadow:none; }
+        .cal-cell--no-shift { cursor:default; }
+        .cal-cell--no-shift:hover { box-shadow:0 1px 2px rgba(0,0,0,.05); transform:none; }
+        .cal-cell--admin-empty { cursor:pointer; }
+        .cal-cell--admin-empty:hover { box-shadow:0 4px 12px rgba(0,0,0,.1); transform:translateY(-1px); }
         .cal-cell--today { border:2px solid #3B82F6; }
         .cal-day-num { display:block; font-weight:700; color:#1e293b; margin-bottom:3px; }
         .cal-cell--today .cal-day-num { color:#3B82F6; }
@@ -31,6 +36,7 @@ $statusLabels = ['active'=>'','sick'=>'🤒 Táppénz','vacation'=>'🌴 Szabads
         .cal-shift-name { display:block; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:.72rem; }
         .cal-shift-time { display:block; color:#64748b; font-size:.68rem; }
         .cal-more { font-size:.68rem; color:#3B82F6; font-weight:600; margin-top:2px; }
+        .cal-add-hint { font-size:.65rem; color:#94a3b8; margin-top:4px; text-align:center; }
         .modal-shift-row { border-left:4px solid #64748b; background:#f8fafc; border-radius:0 8px 8px 0; padding:.6rem 1rem; margin-bottom:.5rem; }
         .modal-shift-row .emp-name { font-weight:700; color:#1e293b; }
         .modal-shift-row .emp-detail { font-size:.8rem; color:#64748b; }
@@ -61,13 +67,19 @@ $statusLabels = ['active'=>'','sick'=>'🤒 Táppénz','vacation'=>'🌴 Szabads
                 $dateStr   = sprintf('%04d-%02d-%02d', $year, $month, $day);
                 $isToday   = ($dateStr === $today);
                 $dayShifts = $shiftsByDate[$dateStr] ?? [];
+                $hasShifts = !empty($dayShifts);
                 $maxShow   = 3;
                 $showShifts = array_slice($dayShifts, 0, $maxShow);
                 $moreCount  = count($dayShifts) - $maxShow;
                 $dowNum     = date('N', strtotime($dateStr));
+                // Admin üres napra is kattinthat
+                $clickable = $hasShifts || $isAdmin;
+                $extraClass = '';
+                if (!$hasShifts && $isAdmin) $extraClass = 'cal-cell--admin-empty';
+                if (!$hasShifts && !$isAdmin) $extraClass = 'cal-cell--no-shift';
             ?>
-                <div class="cal-cell <?= $isToday ? 'cal-cell--today' : '' ?>"
-                     <?php if (!empty($dayShifts)): ?>
+                <div class="cal-cell <?= $isToday ? 'cal-cell--today' : '' ?> <?= $extraClass ?>"
+                     <?php if ($clickable): ?>
                          onclick="openDayModal('<?= $dateStr ?>', '<?= $hunDays[$dowNum] ?>', <?= $day ?>)"
                      <?php endif; ?>>
                     <span class="cal-day-num"><?= $day ?></span>
@@ -82,7 +94,8 @@ $statusLabels = ['active'=>'','sick'=>'🤒 Táppénz','vacation'=>'🌴 Szabads
                     <?php if ($moreCount > 0): ?>
                         <div class="cal-more">+<?= $moreCount ?> további</div>
                     <?php endif; ?>
-                    <?php if (empty($dayShifts)): ?>
+                    <?php if (!$hasShifts && $isAdmin): ?>
+                        <div class="cal-add-hint">+ hozzáad</div>
                     <?php endif; ?>
                 </div>
             <?php endfor; ?>
@@ -100,7 +113,7 @@ $statusLabels = ['active'=>'','sick'=>'🤒 Táppénz','vacation'=>'🌴 Szabads
             </div>
             <div class="modal-body" id="dayModalBody">
             </div>
-            <?php if (($_SESSION['user']['role'] ?? '') === 'admin'): ?>
+            <?php if ($isAdmin): ?>
             <div class="modal-footer border-0 pt-0">
                 <button class="btn btn-sm btn-success" onclick="openAddShiftForm()">+ Beosztás hozzáadása</button>
             </div>
@@ -119,13 +132,13 @@ $statusLabels = ['active'=>'','sick'=>'🤒 Táppénz','vacation'=>'🌴 Szabads
             </div>
             <div class="modal-body">
                 <input type="hidden" id="addShiftDate">
+                <div class="mb-2">
+                    <label class="form-label fw-semibold small mb-1">Dátum</label>
+                    <input type="text" class="form-control form-control-sm" id="addShiftDateDisplay" readonly style="background:#f8fafc;">
+                </div>
                 <div class="mb-3">
                     <label class="form-label fw-semibold">Dolgozó</label>
                     <select class="form-select" id="addShiftUser">
-                        <?php
-                        $allUsers = $this->db ?? null;
-                        // users lista PHP-bol
-                        ?>
                         <option value="">-- Válassz --</option>
                         <?php
                         $uStmt = (Database::getInstance())->prepare("SELECT id, name FROM users WHERE is_active=1 AND role='employee' ORDER BY name");
@@ -157,7 +170,7 @@ $statusLabels = ['active'=>'','sick'=>'🤒 Táppénz','vacation'=>'🌴 Szabads
             </div>
             <div class="modal-footer border-0">
                 <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Mégse</button>
-                <button class="btn btn-success btn-sm" onclick="submitAddShift()">Mentés</button>
+                <button class="btn btn-success btn-sm" id="addShiftSubmitBtn" onclick="submitAddShift()">Mentés</button>
             </div>
         </div>
     </div>
@@ -188,6 +201,7 @@ const shiftsByDate = <?php
 
 const statusLabels = <?= json_encode($statusLabels, JSON_UNESCAPED_UNICODE) ?>;
 const monthNames   = <?= json_encode($monthNames, JSON_UNESCAPED_UNICODE) ?>;
+const isAdmin      = <?= json_encode($isAdmin) ?>;
 
 function openDayModal(dateStr, dayName, dayNum) {
     currentModalDate = dateStr;
@@ -200,10 +214,12 @@ function openDayModal(dateStr, dayName, dayNum) {
     let html = '';
     if (shifts.length === 0) {
         html = '<p class="text-muted text-center py-3">Ezen a napon nincs beosztás.</p>';
+        if (isAdmin) {
+            html += '<p class="text-center"><button class="btn btn-sm btn-outline-success" onclick="openAddShiftForm()">➕ Beosztás hozzáadása</button></p>';
+        }
     } else {
         html = '<div class="small text-muted mb-3">' + shifts.length + ' beosztott dolgozó</div>';
         shifts.forEach(s => {
-            const isAdmin = <?= json_encode($_SESSION['user']['role'] === 'admin') ?>;
             const overtimeBtn = isAdmin
                 ? `<button class="btn btn-xs btn-outline-warning ms-2 overtime-btn"
                       style="font-size:.65rem;padding:1px 7px;border-radius:4px;"
@@ -242,10 +258,20 @@ function openDayModal(dateStr, dayName, dayNum) {
 let currentModalDate = null;
 
 function openAddShiftForm() {
-    document.getElementById('addShiftDate').value = currentModalDate;
+    const date = currentModalDate;
+    document.getElementById('addShiftDate').value = date;
+    // Olvasható dátum megjelenítése
+    const parts = date.split('-');
+    document.getElementById('addShiftDateDisplay').value =
+        parts[0] + '. ' + monthNames[parseInt(parts[1])] + ' ' + parseInt(parts[2]) + '.';
+    document.getElementById('addShiftUser').value = '';
+    document.getElementById('addShiftStart').value = '06:00';
+    document.getElementById('addShiftEnd').value = '18:00';
     document.getElementById('addShiftLocation').value = '';
     document.getElementById('addShiftPlate').value = '';
-    bootstrap.Modal.getInstance(document.getElementById('dayModal'))?.hide();
+
+    const dayModal = bootstrap.Modal.getInstance(document.getElementById('dayModal'));
+    if (dayModal) dayModal.hide();
     setTimeout(() => new bootstrap.Modal(document.getElementById('addShiftModal')).show(), 300);
 }
 
@@ -259,6 +285,10 @@ function submitAddShift() {
 
     if (!userId) { alert('Válassz dolgozót!'); return; }
 
+    const btn = document.getElementById('addShiftSubmitBtn');
+    btn.disabled = true;
+    btn.textContent = 'Mentés...';
+
     fetch('/schedule/add', {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
@@ -266,22 +296,34 @@ function submitAddShift() {
     })
     .then(r => r.json())
     .then(data => {
+        btn.disabled = false;
+        btn.textContent = 'Mentés';
         if (data.success) {
             const s = data.shift;
             if (!shiftsByDate[date]) shiftsByDate[date] = [];
-            shiftsByDate[date].push(s);
+            shiftsByDate[date].push({
+                name: s.employee_name,
+                fleet: s.fleet_name,
+                color: s.color,
+                start: s.start_time ? s.start_time.substring(0,5) : '06:00',
+                end: s.end_time ? s.end_time.substring(0,5) : '18:00',
+                plate: s.license_plate || '',
+                location: s.location || '',
+                status: s.status || 'active',
+                id: s.id,
+                overtime: false,
+            });
             bootstrap.Modal.getInstance(document.getElementById('addShiftModal'))?.hide();
-            setTimeout(() => {
-                const parts = date.split('-');
-                openDayModal(date, '', parseInt(parts[2]));
-                // Naptár cella frissítése
-                location.reload();
-            }, 300);
+            setTimeout(() => location.reload(), 300);
         } else {
             alert(data.message || 'Hiba történt.');
         }
     })
-    .catch(() => alert('Hálózati hiba.'));
+    .catch(() => {
+        btn.disabled = false;
+        btn.textContent = 'Mentés';
+        alert('Hálózati hiba.');
+    });
 }
 
 function deleteShift(shiftId, btn) {
@@ -295,16 +337,16 @@ function deleteShift(shiftId, btn) {
     .then(r => r.json())
     .then(data => {
         if (data.success) {
-            // Sor eltávolítása a modalból
             btn.closest('.modal-shift-row').remove();
-            // JS adatmodell frissítése
             for (const date in shiftsByDate) {
                 shiftsByDate[date] = shiftsByDate[date].filter(s => s.id != shiftId);
             }
-            // Ha üres maradt a modal
             const body = document.getElementById('dayModalBody');
             if (!body.querySelector('.modal-shift-row')) {
                 body.innerHTML = '<p class="text-muted text-center py-3">Ezen a napon nincs beosztás.</p>';
+                if (isAdmin) {
+                    body.innerHTML += '<p class="text-center"><button class="btn btn-sm btn-outline-success" onclick="openAddShiftForm()">➕ Beosztás hozzáadása</button></p>';
+                }
             }
         } else {
             alert(data.message || 'Hiba történt.');
@@ -315,7 +357,6 @@ function deleteShift(shiftId, btn) {
 
 function toggleOvertime(btn) {
     const shiftId = btn.dataset.id;
-    const currentState = btn.dataset.state;
     fetch('/schedule/overtime', {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
@@ -329,13 +370,11 @@ function toggleOvertime(btn) {
             btn.textContent   = isNow ? '⚡ Túlóra' : '+ Túlóra';
             btn.classList.toggle('btn-warning', isNow);
             btn.classList.toggle('btn-outline-warning', !isNow);
-            // JS adatmodell frissítése
             for (const date in shiftsByDate) {
                 shiftsByDate[date].forEach(s => {
                     if (s.id == shiftId) s.overtime = isNow;
                 });
             }
-            // Név színének azonnali frissítése
             const empNameDiv = btn.closest('.modal-shift-row').querySelector('.emp-name');
             if (empNameDiv) {
                 empNameDiv.style.color      = isNow ? '#dc2626' : '';
