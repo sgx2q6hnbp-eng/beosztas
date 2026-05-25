@@ -20,7 +20,8 @@ $statusLabels = ['active'=>'Aktív','sick'=>'Táppénz','vacation'=>'Szabadság'
         .table th { font-size:.78rem; text-transform:uppercase; letter-spacing:.05em; color:#64748b; font-weight:600; border-bottom:2px solid #e2e8f0; }
         .table td { vertical-align:middle; font-size:.9rem; }
         .next-shift-card { background:linear-gradient(135deg,#1E3A5F,#1E40AF); color:#fff; border-radius:12px; }
-        .section-title { font-size:1rem; font-weight:700; color:#1e293b; margin-bottom:1rem; display:flex; align-items:center; gap:.5rem; }
+        .section-title { font-size:1rem; font-weight:700; color:#1e293b; margin-bottom:1rem; display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
+        .week-nav .btn { font-size:.8rem; }
     </style>
 </head>
 <body>
@@ -122,14 +123,26 @@ $statusLabels = ['active'=>'Aktív','sick'=>'Táppénz','vacation'=>'Szabadság'
                 <input type="text" class="form-control form-control-sm w-auto" id="nameFilter" placeholder="🔍 Dolgozó neve...">
                 <span class="ms-auto small text-muted" id="filterCount"></span>
             </div>
-            <div class="section-title">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="#3B82F6" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"/>
-                </svg>
-                Heti beosztás
-                <span class="badge bg-primary bg-opacity-10 text-primary fw-semibold" style="font-size:.72rem;">
-                    <?= date('m. d.', strtotime('monday this week')) ?> – <?= date('m. d.', strtotime('sunday this week')) ?>
-                </span>
+
+            <!-- Hét navigáció -->
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2 week-nav">
+                <div class="section-title mb-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="#3B82F6" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"/>
+                    </svg>
+                    Heti beosztás
+                    <span class="badge bg-primary bg-opacity-10 text-primary fw-semibold" style="font-size:.72rem;">
+                        <?= date('m. d.', strtotime($weekStart)) ?> – <?= date('m. d.', strtotime($weekEnd)) ?>
+                        <?php if ($isCurrentWeek): ?><span class="ms-1 badge bg-success" style="font-size:.65rem;">aktuális</span><?php endif; ?>
+                    </span>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <a href="/dashboard?week=<?= $prevWeek ?>" class="btn btn-outline-secondary btn-sm">← Előző hét</a>
+                    <?php if (!$isCurrentWeek): ?>
+                        <a href="/dashboard" class="btn btn-outline-primary btn-sm">Ma</a>
+                    <?php endif; ?>
+                    <a href="/dashboard?week=<?= $nextWeek ?>" class="btn btn-outline-secondary btn-sm">Következő hét →</a>
+                </div>
             </div>
 
             <?php if (empty($weekShifts)): ?>
@@ -210,7 +223,6 @@ $statusLabels = ['active'=>'Aktív','sick'=>'Táppénz','vacation'=>'Szabadság'
         if (fc) fc.textContent = visible + ' sor';
     }
 
-    // Flotta gombok
     document.getElementById('fleetFilter')?.querySelectorAll('button').forEach(btn => {
         btn.addEventListener('click', () => {
             document.querySelectorAll('#fleetFilter button').forEach(b => b.classList.remove('active'));
@@ -222,16 +234,13 @@ $statusLabels = ['active'=>'Aktív','sick'=>'Táppénz','vacation'=>'Szabadság'
     document.getElementById('statusFilter')?.addEventListener('change', applyFilters);
     document.getElementById('nameFilter')?.addEventListener('input', applyFilters);
 
-    // Rendezés
     document.querySelectorAll('th.sortable').forEach(th => {
         th.addEventListener('click', () => {
             const col = parseInt(th.dataset.col);
             if (sortCol === col) { sortAsc = !sortAsc; }
             else { sortCol = col; sortAsc = true; }
-
             document.querySelectorAll('th.sortable .sort-icon').forEach(i => i.textContent = '↕');
             th.querySelector('.sort-icon').textContent = sortAsc ? '↑' : '↓';
-
             const sorted = rows().sort((a, b) => {
                 const aVal = a.cells[col]?.dataset.val ?? '';
                 const bVal = b.cells[col]?.dataset.val ?? '';
@@ -242,7 +251,6 @@ $statusLabels = ['active'=>'Aktív','sick'=>'Táppénz','vacation'=>'Szabadság'
         });
     });
 
-    // Kezdeti szamlalo
     applyFilters();
 })();
 </script>
