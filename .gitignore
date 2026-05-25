@@ -1,0 +1,49 @@
+# ============================================
+# PHP projekt .gitignore
+# ============================================
+
+# --- Composer (visszaállítható: composer install) ---
+/vendor/
+
+# --- Környezeti / konfigurációs fájlok (érzékeny adatok!) ---
+.env
+.env.local
+.env.*.local
+config/database.php
+config/secrets.php
+
+# --- Feltöltött fájlok (felhasználói tartalom, ne legyen a repóban) ---
+/uploads/*
+!/uploads/.gitkeep
+
+# --- macOS rendszerfájlok ---
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# --- Windows rendszerfájlok ---
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# --- IDE / szerkesztő fájlok ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# --- PHP cache / log fájlok ---
+*.log
+/logs/
+/cache/
+/tmp/
+
+# --- Node (ha van frontend build) ---
+node_modules/
+npm-debug.log*
+
+# --- Egyéb ---
+*.bak
+*.orig
