@@ -65,6 +65,7 @@ $routes = [
         '/schedule/overtime'     => fn() => (new ScheduleController())->toggleOvertime(),
         '/schedule/add'          => fn() => (new ScheduleController())->addShift(),
         '/schedule/delete'       => fn() => (new ScheduleController())->deleteShift(),
+        '/schedule/edit'         => fn() => (new ScheduleController())->editShift(),
         '/swap/accept'           => fn() => (new SwapController())->accept(),
         '/swap/decline'          => fn() => (new SwapController())->decline(),
         '/admin/swaps'           => fn() => (new AdminSwapController())->index(),
@@ -92,6 +93,7 @@ $routes = [
         '/admin/settings'         => fn() => (new AdminController())->saveSettings(),
         '/schedule/add'           => fn() => (new ScheduleController())->addShift(),
         '/schedule/delete'        => fn() => (new ScheduleController())->deleteShift(),
+        '/schedule/edit'          => fn() => (new ScheduleController())->editShift(),
     ],
 ];
 

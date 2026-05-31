@@ -127,8 +127,7 @@ $currentUserId   = (int)($_SESSION['user']['id'] ?? 0);
                 <h5 class="modal-title fw-bold" id="dayModalTitle"></h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" style="filter:invert(1)"></button>
             </div>
-            <div class="modal-body" id="dayModalBody">
-            </div>
+            <div class="modal-body" id="dayModalBody"></div>
             <?php if ($isAdmin): ?>
             <div class="modal-footer border-0 pt-0">
                 <button class="btn btn-sm btn-success" onclick="openAddShiftForm()">+ Beosztás hozzáadása</button>
@@ -192,6 +191,61 @@ $currentUserId   = (int)($_SESSION['user']['id'] ?? 0);
     </div>
 </div>
 
+<!-- Beosztás szerkesztése modal -->
+<div class="modal fade" id="editShiftModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header" style="background:#1d4ed8;color:#fff;">
+                <h5 class="modal-title fw-bold">✏️ Beosztás szerkesztése</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" style="filter:invert(1)"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editShiftId">
+                <div class="mb-2">
+                    <label class="form-label fw-semibold small mb-1">Dolgozó</label>
+                    <input type="text" class="form-control form-control-sm" id="editShiftName" readonly style="background:#f8fafc;">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label fw-semibold small mb-1">Dátum</label>
+                    <input type="text" class="form-control form-control-sm" id="editShiftDateDisplay" readonly style="background:#f8fafc;">
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col">
+                        <label class="form-label fw-semibold">Kezdés</label>
+                        <input type="time" class="form-control" id="editShiftStart">
+                    </div>
+                    <div class="col">
+                        <label class="form-label fw-semibold">Befejezés</label>
+                        <input type="time" class="form-control" id="editShiftEnd">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Helyszín</label>
+                    <input type="text" class="form-control" id="editShiftLocation" placeholder="pl. Budapest">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Rendszám</label>
+                    <input type="text" class="form-control" id="editShiftPlate" placeholder="pl. ABC-123">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Státusz</label>
+                    <select class="form-select" id="editShiftStatus">
+                        <option value="active">Aktív</option>
+                        <option value="sick">🤒 Táppénz</option>
+                        <option value="vacation">🌴 Szabadság</option>
+                        <option value="absence">❌ Hiányzás</option>
+                        <option value="swap_pending">🔄 Csere folyamatban</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer border-0">
+                <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Mégse</button>
+                <button class="btn btn-primary btn-sm" id="editShiftSubmitBtn" onclick="submitEditShift()">💾 Mentés</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Shift adatok JS-nek -->
 <script>
 const shiftsByDate   = <?php
@@ -230,7 +284,6 @@ function toggleMyShifts() {
     const btn = document.getElementById('myShiftToggle');
     btn.classList.toggle('active', myShiftOnly);
     btn.textContent = myShiftOnly ? '👥 Mindenki' : '👤 Csak az enyém';
-
     document.querySelectorAll('#calendarGrid .cal-cell[data-date]').forEach(cell => {
         const hasMyShift = cell.dataset.hasMyShift === '1';
         if (myShiftOnly) {
@@ -245,11 +298,7 @@ function toggleMyShifts() {
 function openDayModal(dateStr, dayName, dayNum) {
     currentModalDate = dateStr;
     let shifts = shiftsByDate[dateStr] || [];
-
-    // Ha szűrő aktív, csak a saját beosztásokat mutatja a modalban is
-    if (myShiftOnly) {
-        shifts = shifts.filter(s => s.user_id === currentUserId);
-    }
+    if (myShiftOnly) shifts = shifts.filter(s => s.user_id === currentUserId);
 
     const parts = dateStr.split('-');
     const title = dayName + ', ' + parts[0] + '. ' + monthNames[parseInt(parts[1])] + ' ' + dayNum + '.';
@@ -258,41 +307,50 @@ function openDayModal(dateStr, dayName, dayNum) {
     let html = '';
     if (shifts.length === 0) {
         html = '<p class="text-muted text-center py-3">Ezen a napon nincs beosztás.</p>';
-        if (isAdmin) {
-            html += '<p class="text-center"><button class="btn btn-sm btn-outline-success" onclick="openAddShiftForm()">➕ Beosztás hozzáadása</button></p>';
-        }
+        if (isAdmin) html += '<p class="text-center"><button class="btn btn-sm btn-outline-success" onclick="openAddShiftForm()">➕ Beosztás hozzáadása</button></p>';
     } else {
         html = '<div class="small text-muted mb-3">' + shifts.length + ' beosztott dolgozó</div>';
         shifts.forEach(s => {
+            const isMine = s.user_id === currentUserId;
+
             const overtimeBtn = isAdmin
-                ? `<button class="btn btn-xs btn-outline-warning ms-2 overtime-btn"
+                ? `<button class="btn btn-xs btn-outline-warning ms-1"
                       style="font-size:.65rem;padding:1px 7px;border-radius:4px;"
                       data-id="${s.id}" data-state="${s.overtime ? '1' : '0'}"
                       onclick="toggleOvertime(this)">
                       ${s.overtime ? '⚡ Túlóra' : '+ Túlóra'}
                    </button>`
                 : (s.overtime ? '<span class="badge bg-warning text-dark ms-1" style="font-size:.65rem">⚡ Túlóra</span>' : '');
+
             const statusBadge = s.status !== 'active'
                 ? '<span class="badge bg-warning text-dark ms-1" style="font-size:.65rem">' + (statusLabels[s.status] || s.status) + '</span>'
                 : '';
+
             const plate    = s.plate    ? '<span class="me-2">🚗 ' + s.plate    + '</span>' : '';
             const location = s.location ? '<span>📍 ' + s.location + '</span>' : '';
+
+            const editBtn = isAdmin
+                ? `<button class="btn btn-xs btn-outline-primary ms-1"
+                      style="font-size:.62rem;padding:1px 7px;border-radius:4px;"
+                      onclick="openEditShiftForm(${s.id}, '${s.name.replace(/'/g,"&#39;")}', '${dateStr}', '${s.start}', '${s.end}', '${(s.location||'').replace(/'/g,"&#39;")}', '${(s.plate||'').replace(/'/g,"&#39;")}', '${s.status}')">
+                      ✏️ Szerk.
+                   </button>`
+                : '';
+
             const deleteBtn = isAdmin
-                ? `<button class="btn btn-xs btn-outline-danger ms-2"
+                ? `<button class="btn btn-xs btn-outline-danger ms-1"
                       style="font-size:.62rem;padding:1px 7px;border-radius:4px;"
                       onclick="deleteShift(${s.id}, this)">🗑 Törlés</button>`
                 : '';
-            const isMine = s.user_id === currentUserId;
+
             html += `
             <div class="modal-shift-row" style="border-left-color:${s.color}${isMine ? ';background:#eff6ff' : ''}" data-shift-id="${s.id}">
                 <div class="emp-name" style="${s.overtime ? 'color:#dc2626;font-weight:700;' : ''}">
                     <span class="fleet-pill" style="background:${s.color}">${s.fleet}</span>
                     ${s.name}${isMine ? ' <span class="badge bg-primary ms-1" style="font-size:.6rem">Én</span>' : ''}
-                    ${statusBadge} ${overtimeBtn} ${deleteBtn}
+                    ${statusBadge} ${overtimeBtn} ${editBtn} ${deleteBtn}
                 </div>
-                <div class="emp-detail mt-1">
-                    ${plate}${location}
-                </div>
+                <div class="emp-detail mt-1">${plate}${location}</div>
             </div>`;
         });
     }
@@ -318,6 +376,71 @@ function openAddShiftForm() {
     const dayModal = bootstrap.Modal.getInstance(document.getElementById('dayModal'));
     if (dayModal) dayModal.hide();
     setTimeout(() => new bootstrap.Modal(document.getElementById('addShiftModal')).show(), 300);
+}
+
+function openEditShiftForm(id, name, dateStr, start, end, location, plate, status) {
+    document.getElementById('editShiftId').value           = id;
+    document.getElementById('editShiftName').value         = name;
+    document.getElementById('editShiftStart').value        = start;
+    document.getElementById('editShiftEnd').value          = end;
+    document.getElementById('editShiftLocation').value     = location;
+    document.getElementById('editShiftPlate').value        = plate;
+    document.getElementById('editShiftStatus').value       = status;
+
+    const parts = dateStr.split('-');
+    document.getElementById('editShiftDateDisplay').value =
+        parts[0] + '. ' + monthNames[parseInt(parts[1])] + ' ' + parseInt(parts[2]) + '.';
+
+    const dayModal = bootstrap.Modal.getInstance(document.getElementById('dayModal'));
+    if (dayModal) dayModal.hide();
+    setTimeout(() => new bootstrap.Modal(document.getElementById('editShiftModal')).show(), 300);
+}
+
+function submitEditShift() {
+    const id       = document.getElementById('editShiftId').value;
+    const start    = document.getElementById('editShiftStart').value;
+    const end      = document.getElementById('editShiftEnd').value;
+    const location = document.getElementById('editShiftLocation').value;
+    const plate    = document.getElementById('editShiftPlate').value;
+    const status   = document.getElementById('editShiftStatus').value;
+
+    const btn = document.getElementById('editShiftSubmitBtn');
+    btn.disabled = true;
+    btn.textContent = 'Mentés...';
+
+    fetch('/schedule/edit', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: `shift_id=${id}&start_time=${start}&end_time=${end}&location=${encodeURIComponent(location)}&license_plate=${encodeURIComponent(plate)}&status=${status}`
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.textContent = '💾 Mentés';
+        if (data.success) {
+            // Frissíti a JS adatot is, hogy modal újranyitáskor helyes legyen
+            for (const date in shiftsByDate) {
+                shiftsByDate[date].forEach(s => {
+                    if (s.id == id) {
+                        s.start    = data.start_time;
+                        s.end      = data.end_time;
+                        s.location = data.location;
+                        s.plate    = data.license_plate;
+                        s.status   = data.status;
+                    }
+                });
+            }
+            bootstrap.Modal.getInstance(document.getElementById('editShiftModal'))?.hide();
+            setTimeout(() => location.reload(), 250);
+        } else {
+            alert(data.message || 'Hiba történt.');
+        }
+    })
+    .catch(() => {
+        btn.disabled = false;
+        btn.textContent = '💾 Mentés';
+        alert('Hálózati hiba.');
+    });
 }
 
 function submitAddShift() {
@@ -347,17 +470,11 @@ function submitAddShift() {
             const s = data.shift;
             if (!shiftsByDate[date]) shiftsByDate[date] = [];
             shiftsByDate[date].push({
-                name: s.employee_name,
-                fleet: s.fleet_name,
-                color: s.color,
+                name: s.employee_name, fleet: s.fleet_name, color: s.color,
                 start: s.start_time ? s.start_time.substring(0,5) : '06:00',
                 end: s.end_time ? s.end_time.substring(0,5) : '18:00',
-                plate: s.license_plate || '',
-                location: s.location || '',
-                status: s.status || 'active',
-                id: s.id,
-                overtime: false,
-                user_id: s.user_id,
+                plate: s.license_plate || '', location: s.location || '',
+                status: s.status || 'active', id: s.id, overtime: false, user_id: s.user_id,
             });
             bootstrap.Modal.getInstance(document.getElementById('addShiftModal'))?.hide();
             setTimeout(() => location.reload(), 300);
@@ -365,16 +482,11 @@ function submitAddShift() {
             alert(data.message || 'Hiba történt.');
         }
     })
-    .catch(() => {
-        btn.disabled = false;
-        btn.textContent = 'Mentés';
-        alert('Hálózati hiba.');
-    });
+    .catch(() => { btn.disabled = false; btn.textContent = 'Mentés'; alert('Hálózati hiba.'); });
 }
 
 function deleteShift(shiftId, btn) {
     if (!confirm('Biztosan törlöd ezt a beosztást?')) return;
-
     fetch('/schedule/delete', {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
@@ -390,13 +502,9 @@ function deleteShift(shiftId, btn) {
             const body = document.getElementById('dayModalBody');
             if (!body.querySelector('.modal-shift-row')) {
                 body.innerHTML = '<p class="text-muted text-center py-3">Ezen a napon nincs beosztás.</p>';
-                if (isAdmin) {
-                    body.innerHTML += '<p class="text-center"><button class="btn btn-sm btn-outline-success" onclick="openAddShiftForm()">➕ Beosztás hozzáadása</button></p>';
-                }
+                if (isAdmin) body.innerHTML += '<p class="text-center"><button class="btn btn-sm btn-outline-success" onclick="openAddShiftForm()">➕ Beosztás hozzáadása</button></p>';
             }
-        } else {
-            alert(data.message || 'Hiba történt.');
-        }
+        } else { alert(data.message || 'Hiba történt.'); }
     })
     .catch(() => alert('Hálózati hiba.'));
 }
@@ -417,18 +525,14 @@ function toggleOvertime(btn) {
             btn.classList.toggle('btn-warning', isNow);
             btn.classList.toggle('btn-outline-warning', !isNow);
             for (const date in shiftsByDate) {
-                shiftsByDate[date].forEach(s => {
-                    if (s.id == shiftId) s.overtime = isNow;
-                });
+                shiftsByDate[date].forEach(s => { if (s.id == shiftId) s.overtime = isNow; });
             }
             const empNameDiv = btn.closest('.modal-shift-row').querySelector('.emp-name');
             if (empNameDiv) {
                 empNameDiv.style.color      = isNow ? '#dc2626' : '';
                 empNameDiv.style.fontWeight = isNow ? '700' : '';
             }
-        } else {
-            alert(data.message || 'Hiba történt.');
-        }
+        } else { alert(data.message || 'Hiba történt.'); }
     })
     .catch(() => alert('Hálózati hiba.'));
 }

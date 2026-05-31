@@ -30,7 +30,6 @@ class ScheduleController
         $fleetId = !empty($user['fleet_id']) ? (int)$user['fleet_id'] : null;
 
         if ($isAdmin || $fleetId === null) {
-            // Admin vagy flotta nélküli dolgozó: teljes beosztás
             $stmt = $this->db->prepare(
                 "SELECT s.*, u.name AS employee_name, f.name AS fleet_name, f.color
                  FROM shifts s
@@ -43,7 +42,6 @@ class ScheduleController
             );
             $stmt->execute([':first' => $firstDay, ':last' => $lastDay]);
         } else {
-            // Dolgozó: csak a saját flottája
             $stmt = $this->db->prepare(
                 "SELECT s.*, u.name AS employee_name, f.name AS fleet_name, f.color
                  FROM shifts s
@@ -179,6 +177,72 @@ class ScheduleController
                 'status'        => 'active',
                 'is_overtime'   => false,
             ]
+        ]);
+    }
+
+    public function editShift(): void
+    {
+        AuthService::requireAdmin();
+
+        header('Content-Type: application/json');
+
+        $shiftId   = (int)trim($_POST['shift_id']      ?? 0);
+        $startTime = trim($_POST['start_time']          ?? '');
+        $endTime   = trim($_POST['end_time']            ?? '');
+        $location  = trim($_POST['location']            ?? '');
+        $plate     = trim($_POST['license_plate']       ?? '');
+        $status    = trim($_POST['status']              ?? 'active');
+
+        $allowedStatuses = ['active', 'sick', 'vacation', 'absence', 'swap_pending'];
+
+        if ($shiftId <= 0) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => 'Érvénytelen műszak azonosító.']);
+            return;
+        }
+
+        if (!preg_match('/^\d{2}:\d{2}$/', $startTime) || !preg_match('/^\d{2}:\d{2}$/', $endTime)) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => 'Hibás időformátum (HH:MM szükséges).']);
+            return;
+        }
+
+        if (!in_array($status, $allowedStatuses, true)) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => 'Érvénytelen státusz.']);
+            return;
+        }
+
+        $chk = $this->db->prepare("SELECT id FROM shifts WHERE id = :id");
+        $chk->execute([':id' => $shiftId]);
+        if (!$chk->fetch()) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'message' => 'A műszak nem található.']);
+            return;
+        }
+
+        $this->db->prepare(
+            "UPDATE shifts
+             SET start_time = :start, end_time = :end,
+                 location = :loc, license_plate = :plate, status = :status
+             WHERE id = :id"
+        )->execute([
+            ':start'  => $startTime,
+            ':end'    => $endTime,
+            ':loc'    => $location ?: null,
+            ':plate'  => $plate ?: null,
+            ':status' => $status,
+            ':id'     => $shiftId,
+        ]);
+
+        echo json_encode([
+            'success'       => true,
+            'shift_id'      => $shiftId,
+            'start_time'    => $startTime,
+            'end_time'      => $endTime,
+            'location'      => $location,
+            'license_plate' => $plate,
+            'status'        => $status,
         ]);
     }
 
