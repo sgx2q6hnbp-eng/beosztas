@@ -13,23 +13,25 @@ class SwapController
 
     public function index(): void
     {
-        $userId = $_SESSION['user']['id'];
+        $userId   = $_SESSION['user']['id'];
+        // 2 hónap előre
+        $horizon  = date('Y-m-d', strtotime('+2 months'));
 
-        // Saját jövőbeli műszakok
+        // Saját jövőbeli műszakok (mára is beleértve)
         $myShifts = $this->db->prepare(
             "SELECT s.*, f.name AS fleet_name, f.color
              FROM shifts s
              LEFT JOIN fleets f ON f.id = s.fleet_id
              WHERE s.user_id = :uid
                AND s.shift_date >= CURDATE()
+               AND s.shift_date <= :horizon
                AND s.status = 'active'
-             ORDER BY s.shift_date ASC
-             LIMIT 30"
+             ORDER BY s.shift_date ASC"
         );
-        $myShifts->execute([':uid' => $userId]);
+        $myShifts->execute([':uid' => $userId, ':horizon' => $horizon]);
         $myShifts = $myShifts->fetchAll();
 
-        // Összes többi dolgozó jövőbeli műszakja
+        // Összes többi dolgozó jövőbeli műszakja (szintén 2 hónap)
         $otherShifts = $this->db->prepare(
             "SELECT s.*, u.name AS employee_name, f.name AS fleet_name, f.color
              FROM shifts s
@@ -37,11 +39,11 @@ class SwapController
              LEFT JOIN fleets f ON f.id = s.fleet_id
              WHERE s.user_id != :uid
                AND s.shift_date >= CURDATE()
+               AND s.shift_date <= :horizon
                AND s.status = 'active'
-             ORDER BY s.shift_date ASC
-             LIMIT 60"
+             ORDER BY s.shift_date ASC"
         );
-        $otherShifts->execute([':uid' => $userId]);
+        $otherShifts->execute([':uid' => $userId, ':horizon' => $horizon]);
         $otherShifts = $otherShifts->fetchAll();
 
         // Saját korábbi csere kérelmek
@@ -164,7 +166,6 @@ class SwapController
             "UPDATE shifts SET status = 'swap_pending' WHERE id = :id"
         )->execute([':id' => $myShiftId]);
 
-
         // Célszemély és kérelmező adatai az e-mailhez
         $usersStmt = $this->db->prepare("SELECT id, name, email FROM users WHERE id IN (:req, :tgt)");
         $usersStmt->execute([':req' => $userId, ':tgt' => $targetUserId]);
@@ -172,7 +173,6 @@ class SwapController
         foreach ($usersStmt->fetchAll() as $u) { $usersMap[$u['id']] = $u; }
         $requesterUser = $usersMap[$userId]        ?? ['id'=>$userId,      'name'=>'?', 'email'=>''];
         $targetUser    = $usersMap[$targetUserId]  ?? ['id'=>$targetUserId, 'name'=>'?', 'email'=>''];
-        $myShiftDate     = $this->db->prepare("SELECT shift_date FROM shifts WHERE id = :id")->execute([':id' => $myShiftId]);
         $requesterDate = $this->db->query("SELECT shift_date FROM shifts WHERE id = $myShiftId")->fetchColumn();
         $targetDate    = $this->db->query("SELECT shift_date FROM shifts WHERE id = $targetShiftId")->fetchColumn();
         MailService::notifySwapNew($targetUser, $requesterUser, $requesterDate, $targetDate);
@@ -251,10 +251,9 @@ class SwapController
         try {
             $this->db->prepare(
                 "UPDATE swap_requests SET status = 'rejected' WHERE id = :id"
-
             )->execute([':id' => $id]);
 
-            // Kérelmező műszakját visszaállítjuk active-ra
+            // Kérelmező műszakját visszaallítjuk active-ra
             $this->db->prepare(
                 "UPDATE shifts SET status = 'active' WHERE id = :id"
             )->execute([':id' => (int)$swap['requester_shift_id']]);
@@ -264,7 +263,6 @@ class SwapController
             $this->db->rollBack();
         }
 
-        
         // E-mail értesítés a kérelmezőnek (elutasítás)
         $reqUserStmt = $this->db->prepare('SELECT id, name, email FROM users WHERE id = :id');
         $reqUserStmt->execute([':id' => (int)$swap['requester_id']]);
