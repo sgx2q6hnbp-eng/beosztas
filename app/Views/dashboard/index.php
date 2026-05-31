@@ -22,6 +22,8 @@ $statusLabels = ['active'=>'Aktív','sick'=>'Táppénz','vacation'=>'Szabadság'
         .next-shift-card { background:linear-gradient(135deg,#1E3A5F,#1E40AF); color:#fff; border-radius:12px; }
         .section-title { font-size:1rem; font-weight:700; color:#1e293b; margin-bottom:1rem; display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
         .week-nav .btn { font-size:.8rem; }
+        .btn-my-schedule { background:#0C4E54; color:#fff; border:none; }
+        .btn-my-schedule:hover { background:#0a3c41; color:#fff; }
     </style>
 </head>
 <body>
@@ -34,7 +36,12 @@ $statusLabels = ['active'=>'Aktív','sick'=>'Táppénz','vacation'=>'Szabadság'
             <h1 class="h4 fw-bold mb-0">Üdvözöllek, <?= htmlspecialchars($user['name']) ?>! 👋</h1>
             <p class="text-muted small mb-0"><?= date('Y. F j., l') ?></p>
         </div>
-        <a href="/schedule" class="btn btn-primary btn-sm">📅 Teljes beosztás</a>
+        <div class="d-flex gap-2 flex-wrap">
+            <?php if (!$isAdmin): ?>
+            <a href="/my-schedule" class="btn btn-sm btn-my-schedule">📅 Saját beosztásom</a>
+            <?php endif; ?>
+            <a href="/schedule" class="btn btn-primary btn-sm">📋 Teljes beosztás</a>
+        </div>
     </div>
 
     <!-- Stat kártyák -->

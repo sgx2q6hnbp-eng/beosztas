@@ -26,15 +26,26 @@ $userName    = $_SESSION['user_name'] ?? 'Felhasználó';
         <div class="collapse navbar-collapse" id="mainNav">
             <ul class="navbar-nav me-auto mb-2 mb-lg-0">
 
+                <!-- Saját beosztásom (csak dolgozóknak) -->
+                <?php if (!$isAdmin): ?>
+                <li class="nav-item">
+                    <a class="nav-link <?= str_starts_with($currentUri, '/my-schedule') ? 'active' : '' ?>"
+                       href="/my-schedule"
+                       style="<?= str_starts_with($currentUri, '/my-schedule') ? '' : 'opacity:.9' ?>">
+                        📅 Saját beosztásom
+                    </a>
+                </li>
+                <?php endif; ?>
+
                 <!-- Beosztás -->
                 <li class="nav-item">
-                    <a class="nav-link <?= str_starts_with($currentUri, '/schedule') ? 'active' : '' ?>"
+                    <a class="nav-link <?= $currentUri === '/schedule' ? 'active' : '' ?>"
                        href="/schedule">
-                        Beosztás
+                        Teljes beosztás
                     </a>
                 </li>
 
-                <!-- Szabadság (zöld akcentus) -->
+                <!-- Szabadság -->
                 <li class="nav-item">
                     <a class="nav-link nav-leave <?= str_starts_with($currentUri, '/leave') ? 'active' : '' ?>"
                        href="/leave">
@@ -42,7 +53,7 @@ $userName    = $_SESSION['user_name'] ?? 'Felhasználó';
                     </a>
                 </li>
 
-                <!-- Csere (lila akcentus) -->
+                <!-- Csere -->
                 <li class="nav-item">
                     <a class="nav-link nav-swap <?= str_starts_with($currentUri, '/swap') ? 'active' : '' ?>"
                        href="/swap">
@@ -62,6 +73,7 @@ $userName    = $_SESSION['user_name'] ?? 'Felhasználó';
                         <li><a class="dropdown-item" href="/admin/employees">Dolgozók</a></li>
                         <li><a class="dropdown-item" href="/admin/leaves">Kérelmek</a></li>
                         <li><?php $__pc=Database::getInstance()->query("SELECT COUNT(*) FROM swap_requests WHERE status IN ('pending','accepted')")->fetchColumn(); ?><a class="dropdown-item" href="/admin/swaps">Csere kérelmek<?php if($__pc>0): ?> <span class="badge bg-danger ms-1"><?php echo $__pc; ?></span><?php endif; ?></a></li>
+                        <li><a class="dropdown-item <?= $currentUri === '/admin/holidays' ? 'active' : '' ?>" href="/admin/holidays">🗓️ Ünnepnapok</a></li>
                         <li><hr class="dropdown-divider"></li>
                         <li><a class="dropdown-item" href="/admin/logs">Audit napló</a></li>
                         <li><a class="dropdown-item <?= $currentUri === '/admin/settings' ? 'active' : '' ?>" href="/admin/settings">⚙️ Beállítások</a></li>
